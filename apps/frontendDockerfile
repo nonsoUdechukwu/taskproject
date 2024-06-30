@@ -1,0 +1,20 @@
+# Use the official Node.js image to build the frontend
+FROM node:14 AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+
+# Ensure node_modules/.bin is in PATH
+ENV PATH /app/node_modules/.bin:$PATH
+
+# Set the NODE_OPTIONS environment variable to use legacy OpenSSL provider
+ENV NODE_OPTIONS=--openssl-legacy-provider
+
+# Run the build command
+RUN npm run build
+
+# Use the official NGINX image to serve the frontend
+FROM nginx:alpine
+WORKDIR /usr/share/nginx/html
+COPY --from=build /app/build /usr/share/nginx/html

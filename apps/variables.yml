@@ -1,0 +1,8 @@
+variables:
+  ACR_NAME: 'reactspringapp-acr'
+  BACKEND_IMAGE_NAME: 'backend'
+  FRONTEND_IMAGE_NAME: 'frontend'
+  dockerRegistryServiceConnection: 'reactspringapp-acr'
+  k8cluster: 'reactspringapp-k8'
+  resourcegroup: 'reactspringapp-rg'
+  appserviceconnection: 'reactspringapp-sc'

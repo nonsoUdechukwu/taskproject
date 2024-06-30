@@ -1,0 +1,5 @@
+
+
+variable "nameprefix" {
+  default = "reactspringapp"
+}

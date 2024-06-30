@@ -1,0 +1,112 @@
+
+trigger: 
+ - none
+
+
+pool:
+ vmImage: 'ubuntu-latest'
+
+
+variables:
+  - template: variables.yml
+  
+   
+
+stages:
+  - stage: Deploy_Azure_Resources
+    displayName: 'Deploy_Azure_Resources'
+    jobs:
+      - job: Deploy_Azure_Resources
+        steps:
+          - checkout: self
+          - pwsh: |
+              Get-ChildItem $(System.DefaultWorkingDirectory) -Recurse
+            name: DebugCheckout
+          
+          - task: AzureCLI@2
+            name: Create_Resource_Group
+            inputs:
+              azureSubscription: $(serviceconnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                
+                if ! az group show --name $(rg_name); then
+                  az group create --name $(rg_name) --location $(location)
+                else
+                  echo "Resource group $(rg_name) already exists."
+                fi
+
+
+          - task: AzureCLI@2
+            name: Create_Storage_Account
+            inputs:
+              azureSubscription: $(serviceconnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az storage account create --resource-group $(rg_name) --name "$(st_name)" --sku Standard_LRS --encryption-services blob
+                az storage container create --name $(st_container) --account-name "$(st_name)" --auth-mode login
+
+                 if ! az storage account show --name "$(st_name)" --resource-group $(rg_name); then
+                  az storage account create --resource-group $(rg_name) --name "$(st_name)" --sku Standard_LRS --encryption-services blob
+                else
+                  echo "Storage account $(st_name) already exists."
+                fi
+
+                if ! az storage container show --name $(st_container)  --account-name "$(st_name)"; then
+                  az storage container create --name $(st_container)  --account-name "$(st_name)" --auth-mode login
+                else
+                  echo "Storage container $(st_container)  already exists."
+                fi
+
+          - task: Bash@3
+            displayName: Display Directory
+            inputs:
+              name: 'Display_Directory'
+              targetType: 'inline'
+              script: |
+                echo "Working Directory"
+                pwd
+                ls -la
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.x'
+              addToPath: true
+
+          - task: TerraformInstaller@0
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.0.11'
+
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform Init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              backendServiceArm: $(serviceconnection)
+              ensureBackend: true
+              backendAzureRmResourceGroupName: $(rg_name)
+              backendAzureRmStorageAccountName: $(st_name)
+              backendAzureRmContainerName: $(st_container)
+              backendAzureRmKey: $(tfstateFile)
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform Plan
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              environmentServiceNameAzureRM: $(serviceconnection)
+          
+        
+          - task: TerraformTaskV4@4
+            displayName: Terraform Apply
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              environmentServiceNameAzureRM: $(serviceconnection)

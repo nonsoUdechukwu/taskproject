@@ -1,0 +1,85 @@
+trigger:
+- none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+
+variables:
+  - template: variables.yml
+  - group: appidcred
+
+
+stages:
+- stage: BuildBackend
+  displayName: 'Build and Push Backend'
+  jobs:
+  - job: Build
+    displayName: 'Build Backend Docker Image'
+    steps:
+    - checkout: self
+
+    - task: Docker@2
+      displayName: 'Build and Push Backend Image'
+      inputs:
+        command: 'buildAndPush'
+        repository: '$(ACR_NAME).azurecr.io/$(BACKEND_IMAGE_NAME)'
+        dockerfile: '$(System.DefaultWorkingDirectory)/apps/backendDockerfile'
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        tags: |
+          latest
+
+- stage: BuildFrontend
+  displayName: 'Build and Push Frontend'
+  dependsOn: BuildBackend
+  jobs:
+  - job: Build
+    displayName: 'Build Frontend Docker Image'
+    steps:
+    - checkout: self
+
+    - task: Docker@2
+      displayName: 'Build and Push Frontend Image'
+      inputs:
+        command: 'buildAndPush'
+        repository: '$(ACR_NAME).azurecr.io/$(FRONTEND_IMAGE_NAME)'
+        dockerfile: '$(System.DefaultWorkingDirectory)/apps/frontendDockerfile'
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        tags: |
+          latest
+
+- stage: DeployApplication
+  displayName: 'Deploy Application'
+  jobs:
+  - job: Deploy
+    displayName: 'Deploy Apps to AKS'
+    steps:
+    - task: KubectlInstaller@0
+      inputs:
+        kubectlVersion: 'latest' 
+
+    - task: KubernetesManifest@1
+      inputs:
+        action: 'deploy'
+        connectionType: 'azureResourceManager'
+        azureSubscriptionConnection: '$(appserviceconnection)'
+        azureResourceGroup: '$(resourcegroup)'
+        kubernetesCluster: '$(k8cluster)'
+        useClusterAdmin: true
+        manifests: '$(System.DefaultWorkingDirectory)/apps/apps.yml'
+
+    - task: AzureCLI@2
+      displayName: Deploy Prometheus and Grafana
+      inputs:
+        azureSubscription: '$(appserviceconnection)'
+        scriptType: 'pscore'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az login --service-principal -u $(appid) -p $(pass) --tenant $(tenant)
+          az account set --subscription $(subscription)
+          az aks get-credentials --resource-group cloudproject --name cloudproject
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          kubectl create ns prometheus
+          helm install prometheus prometheus-community/kube-prometheus-stack -n prometheus
+          kubectl get all -n prometheus

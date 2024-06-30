@@ -1,0 +1,8 @@
+variables:
+  location: westeurope
+  rg_name: reactspringapp-rg
+  serviceconnection: reactspringapp-sc
+  subscription: 'MSDN Platforms Subscription'
+  st_name: reactspringappst
+  st_container: reactspringappcontainer
+  tfstateFile: terraform.tfstate
